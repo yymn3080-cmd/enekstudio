@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="hu"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Énekstúdió</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1f;--card:#f2f2f6;--ac:#7c3aed;--mut:#666;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121216;--fg:#f1f1f5;--card:#1e1e25;--mut:#a0a0ad;--ac:#a78bfa}}
+:root[data-theme="dark"]{--bg:#121216;--fg:#f1f1f5;--card:#1e1e25;--mut:#a0a0ad;--ac:#a78bfa}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sans-serif;padding:16px;max-width:520px;margin:auto}
+h1{font-size:22px;margin:8px 0}
+p.n{color:var(--mut);font-size:13px;margin:4px 0 12px}
+.c{background:var(--card);border-radius:14px;padding:12px 14px;margin:10px 0}
+.c h2{font-size:15px;margin:0 0 6px}
+label{display:flex;justify-content:space-between;font-size:14px;margin-top:8px}
+input[type=range]{width:100%;accent-color:var(--ac)}
+button{background:var(--ac);color:#fff;border:0;border-radius:12px;padding:14px;font-size:16px;width:100%}
+button.on{background:#dc2626}
+audio{width:100%;margin-top:8px}
+#e{color:#dc2626;font-size:13px}
+</style></head><body>
+<h1>🎤 Énekstúdió</h1>
+<p class="n">Használj fülhallgatót, különben visszahangzik a hangszóróból! Bluetooth fülessel késés lehet, vezetékessel a legjobb.</p>
+<button id="go">Indítás</button><div id="e"></div>
+
+<div class="c"><h2>Hangod</h2>
+<label>Mikrofon erő<span></span></label><input type="range" id="mic" min="0" max="2" step=".01" value="1">
+<label>Saját hang (élő visszahallás)<span></span></label><input type="range" id="dry" min="0" max="1" step=".01" value=".8"></div>
+
+<div class="c"><h2>Effektek</h2>
+<label>Terem / reverb<span></span></label><input type="range" id="rv" min="0" max="1" step=".01" value=".35">
+<label>Visszhang (echo)<span></span></label><input type="range" id="ec" min="0" max="1" step=".01" value=".25">
+<label>Kórus (több énekes)<span></span></label><input type="range" id="ch" min="0" max="1" step=".01" value=".5"></div>
+
+<div class="c"><h2>Zene (alapzene)</h2>
+<input type="file" id="file" accept="audio/*">
+<audio id="track" controls></audio>
+<label>Zene hangereje<span></span></label><input type="range" id="tg" min="0" max="1" step=".01" value=".6"></div>
+
+<div class="c"><label>Fő hangerő<span></span></label><input type="range" id="ms" min="0" max="1.5" step=".01" value="1"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+let ctx,started=false,G={};
+function impulse(sec){const r=ctx.sampleRate,l=r*sec,b=ctx.createBuffer(2,l,r);
+ for(let c=0;c<2;c++){const d=b.getChannelData(c);for(let i=0;i<l;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/l,2.5);}return b;}
+function bind(id,node){const s=$(id);const f=()=>{node.gain.value=+s.value};s.addEventListener('input',f);f();}
+async function start(){
+ try{
+  ctx=new(window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});
+  const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+  const src=ctx.createMediaStreamSource(st);
+  const mic=ctx.createGain(),ms=ctx.createGain(),dry=ctx.createGain(),rv=ctx.createGain(),ec=ctx.createGain(),ch=ctx.createGain(),tg=ctx.createGain();
+  src.connect(mic);ms.connect(ctx.destination);
+  mic.connect(dry);dry.connect(ms);
+  const cv=ctx.createConvolver();cv.buffer=impulse(2.2);mic.connect(cv);cv.connect(rv);rv.connect(ms);
+  const dl=ctx.createDelay(1),fb=ctx.createGain();dl.delayTime.value=.32;fb.gain.value=.4;
+  mic.connect(dl);dl.connect(fb);fb.connect(dl);dl.connect(ec);ec.connect(ms);
+  const n=5;
+  for(let i=0;i<n;i++){
+   const d=ctx.createDelay(.1);d.delayTime.value=.022+i*.009;
+   const o=ctx.createOscillator();o.frequency.value=.35+i*.21;
+   const lg=ctx.createGain();lg.gain.value=.002+i*.0007;
+   o.connect(lg);lg.connect(d.delayTime);o.start();
+   const p=ctx.createStereoPanner();p.pan.value=(i/(n-1))*2-1;
+   mic.connect(d);d.connect(p);p.connect(ch);
+  }
+  ch.connect(ms);
+  const ts=ctx.createMediaElementSource($('track'));ts.connect(tg);tg.connect(ms);
+  bind('mic',mic);bind('dry',dry);bind('rv',rv);bind('ec',ec);bind('ch',ch);bind('tg',tg);bind('ms',ms);
+  started=true;$('go').textContent='Leállítás';$('go').classList.add('on');$('e').textContent='';
+ }catch(err){$('e').textContent='Nem sikerült elindítani a mikrofont: '+err.message;}
+}
+$('go').onclick=()=>{
+ if(!started){start();return;}
+ ctx.close();started=false;$('track').pause();
+ $('go').textContent='Indítás';$('go').classList.remove('on');
+ const t=$('track');const s=t.src;t.removeAttribute('src');if(s)t.src=s;
+};
+$('file').onchange=e=>{const f=e.target.files[0];if(f)$('track').src=URL.createObjectURL(f);};
+</script></body></html>
